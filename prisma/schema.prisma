@@ -1,0 +1,86 @@
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id          String       @id @default(uuid())
+  name        String
+  email       String       @unique
+  password    String // Senha com hash bcrypt
+  credits     Int          @default(1000) // Saldo de creditos inicial
+  role        String       @default("user") // "user" | "admin"
+  researches  Research[]
+  extractions Extraction[]
+  createdAt   DateTime     @default(now())
+}
+
+model Research {
+  id               String       @id @default(uuid())
+  userId           String
+  user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name             String // Ex: "Farmacias Aracaju"
+  cnae             String // Ex: "4771701"
+  state            String // Ex: "SE"
+  capitalMin       Float?
+  capitalMax       Float?
+  estimatedLeads   Int? // Retorno da estimativa (ex: 1461)
+  estimatedCompanies Int? // Total de empresas da estimativa
+  alieviResearchId String? // ID gerado na Alievi
+  extractions      Extraction[]
+  createdAt        DateTime     @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model Extraction {
+  id                 String   @id @default(uuid())
+  researchId         String
+  research           Research @relation(fields: [researchId], references: [id], onDelete: Cascade)
+  userId             String
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  leadsRequested     Int // Quantidade pedida (ex: 20)
+  creditsCharged     Int      @default(0) // Debitado do usuario (1 lead = 1 credito; admin = 0)
+  status             String   @default("processing") // processing, completed, failed
+  alieviExtractionId String?
+  leads              Lead[]
+  createdAt          DateTime @default(now())
+
+  @@index([researchId, createdAt])
+}
+
+model Lead {
+  id           String     @id @default(uuid())
+  extractionId String
+  extraction   Extraction @relation(fields: [extractionId], references: [id], onDelete: Cascade)
+  nome         String? // Nome do socio
+  cpf          String? // CPF do socio
+  nomeEmpresa  String? // Razao Social
+  nomeFantasia String? // Nome Fantasia
+  cnpj         String?
+  telefones    String? // Telefones achatados, para exibicao rapida
+  emails       String? // Emails achatados, para exibicao rapida
+  endereco     String?
+
+  // Campos da empresa que o modal de detalhes precisa
+  nomeCidade      String?
+  telefoneEmpresa String?
+
+  status String? // "entrada"
+  valid  Boolean @default(false)
+
+  // Fonte de verdade estruturada: o achatado acima e derivado destes.
+  // phones: [{ ddd, telefone, numero_formatado, classificacao, whatsapp }]
+  // emails: [{ endereco, usuario, dominio, score, status, ... }]
+  phonesJson Json?
+  emailsJson Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([extractionId])
+}
