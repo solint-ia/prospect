@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Loader2, LogIn, UserPlus } from "lucide-react";
+import CampoSenha from "../components/CampoSenha";
 
 type Modo = "login" | "cadastro";
 type RespostaAuth = { error?: string };
@@ -132,26 +133,23 @@ export default function LoginPage() {
               />
             </label>
 
-            <label className="block">
-              <span className="mb-2 block text-[13px] font-medium text-slate-300">
-                Senha
-              </span>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                minLength={6}
-                autoComplete={ehCadastro ? "new-password" : "current-password"}
-                placeholder="••••••••"
-                className={inputCls}
-              />
-              {ehCadastro && (
-                <span className="mt-1.5 block text-xs text-slate-500">
-                  Mínimo de 6 caracteres
-                </span>
-              )}
-            </label>
+            <CampoSenha
+              label="Senha"
+              value={password}
+              onChange={setPassword}
+              required
+              minLength={6}
+              autoComplete={ehCadastro ? "new-password" : "current-password"}
+              placeholder="••••••••"
+              className={inputCls}
+              dica={
+                ehCadastro ? (
+                  <span className="mt-1.5 block text-xs text-slate-500">
+                    Mínimo de 6 caracteres
+                  </span>
+                ) : undefined
+              }
+            />
           </div>
 
           {erro && (

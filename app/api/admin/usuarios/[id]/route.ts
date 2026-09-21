@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { exigirAdmin } from "@/lib/auth";
+import { criarSessao, exigirAdmin, gerarHash } from "@/lib/auth";
 import { mensagemDeErro, statusDoErro } from "@/lib/erros";
 
 export const runtime = "nodejs";
@@ -8,7 +8,9 @@ export const dynamic = "force-dynamic";
 
 const LIMITE_CREDITOS = 10_000_000;
 
-/** Define o saldo de créditos e/ou o perfil de uma conta. */
+const SENHA_MINIMA = 6;
+
+/** Atualiza nome, e-mail, senha, créditos e/ou perfil de uma conta. */
 export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -18,7 +20,46 @@ export async function PATCH(
     const { id } = await params;
     const body = await req.json();
 
-    const data: { credits?: number; role?: string } = {};
+    const data: {
+      name?: string;
+      email?: string;
+      password?: string;
+      passwordChangedAt?: Date;
+      credits?: number;
+      role?: string;
+    } = {};
+
+    if (body.name !== undefined) {
+      const name = String(body.name).trim();
+      if (!name) throw new Error("Informe o nome do usuário.");
+      data.name = name;
+    }
+
+    if (body.email !== undefined) {
+      const email = String(body.email).trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        throw new Error("Informe um e-mail válido.");
+      }
+      const emUso = await prisma.user.findUnique({ where: { email } });
+      if (emUso && emUso.id !== id) {
+        throw new Error("Já existe uma conta com esse e-mail.");
+      }
+      data.email = email;
+    }
+
+    let trocouSenha = false;
+    if (body.password !== undefined && String(body.password) !== "") {
+      const password = String(body.password);
+      if (password.length < SENHA_MINIMA) {
+        throw new Error(
+          `A senha precisa ter pelo menos ${SENHA_MINIMA} caracteres.`
+        );
+      }
+      data.password = await gerarHash(password);
+      // Derruba as sessões abertas com a senha antiga.
+      data.passwordChangedAt = new Date();
+      trocouSenha = true;
+    }
 
     if (body.credits !== undefined) {
       const credits = Number(body.credits);
@@ -49,7 +90,10 @@ export async function PATCH(
       select: { id: true, name: true, email: true, role: true, credits: true },
     });
 
-    return NextResponse.json({ usuario });
+    // Trocou a própria senha: reemite o cookie para não se deslogar sozinho.
+    if (trocouSenha && id === admin.id) await criarSessao(admin.id);
+
+    return NextResponse.json({ usuario, sessoesEncerradas: trocouSenha });
   } catch (error) {
     return NextResponse.json(
       { error: mensagemDeErro(error) },

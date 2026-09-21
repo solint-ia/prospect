@@ -10,6 +10,7 @@ import {
   Search,
   ShieldCheck,
   ShieldOff,
+  Pencil,
   Trash2,
   TrendingDown,
   UserPlus,
@@ -19,6 +20,8 @@ import {
 } from "lucide-react";
 import type { UsuarioAdmin } from "@/lib/admin";
 import { dataCurta, num } from "./ui";
+import CampoSenha from "./CampoSenha";
+import ModalEditarUsuario from "./ModalEditarUsuario";
 import Paginacao from "./Paginacao";
 
 interface Resumo {
@@ -284,20 +287,17 @@ function ModalNovoUsuario({
             />
           </label>
 
-          <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-slate-300">Senha</span>
-            <input
-              type="password"
-              required
-              minLength={6}
-              autoComplete="new-password"
-              value={password}
-              onChange={(evento) => setPassword(evento.target.value)}
-              disabled={salvando}
-              placeholder="Mínimo de 6 caracteres"
-              className={campoCls}
-            />
-          </label>
+          <CampoSenha
+            label="Senha"
+            value={password}
+            onChange={setPassword}
+            required
+            minLength={6}
+            autoComplete="new-password"
+            disabled={salvando}
+            placeholder="Mínimo de 6 caracteres"
+            className={campoCls}
+          />
         </div>
 
         {erro && (
@@ -427,6 +427,7 @@ export default function PainelAdmin({
   const [alterandoPerfil, setAlterandoPerfil] = useState<string | null>(null);
   const [paraExcluir, setParaExcluir] = useState<UsuarioAdmin | null>(null);
   const [modalNovoUsuario, setModalNovoUsuario] = useState(false);
+  const [paraEditar, setParaEditar] = useState<UsuarioAdmin | null>(null);
 
   const filtrados = useMemo(() => {
     const t = busca
@@ -468,6 +469,7 @@ export default function PainelAdmin({
     setAviso(msg);
     setParaExcluir(null);
     setModalNovoUsuario(false);
+    setParaEditar(null);
     router.refresh();
   }
 
@@ -711,6 +713,14 @@ export default function PainelAdmin({
                       <div className="flex justify-end gap-1.5">
                         <button
                           type="button"
+                          onClick={() => setParaEditar(u)}
+                          title={souEu ? "Editar meus dados e senha" : "Editar nome, e-mail e senha"}
+                          className="rounded-lg border border-white/10 p-2 text-slate-400 transition hover:border-emerald-400/40 hover:text-emerald-300"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => alternarPerfil(u)}
                           disabled={souEu || alterandoPerfil === u.id}
                           title={
@@ -770,6 +780,15 @@ export default function PainelAdmin({
           usuario={paraExcluir}
           onFechar={() => setParaExcluir(null)}
           onExcluido={concluido}
+        />
+      )}
+
+      {paraEditar && (
+        <ModalEditarUsuario
+          usuario={paraEditar}
+          souEu={paraEditar.id === adminId}
+          onFechar={() => setParaEditar(null)}
+          onSalvo={concluido}
         />
       )}
 

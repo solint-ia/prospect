@@ -56,20 +56,46 @@ export async function usuarioAtual(): Promise<UsuarioSessao | null> {
   if (!token) return null;
 
   let userId: string;
+  let emitidoEm: number | null = null; // segundos, como vem do JWT
   try {
-    const payload = jwt.verify(token, segredo()) as { sub?: string };
+    const payload = jwt.verify(token, segredo()) as { sub?: string; iat?: number };
     if (!payload.sub) return null;
     userId = payload.sub;
+    emitidoEm = typeof payload.iat === "number" ? payload.iat : null;
   } catch {
     return null; // expirado ou adulterado
   }
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, name: true, email: true, credits: true, role: true },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      credits: true,
+      role: true,
+      passwordChangedAt: true,
+    },
   });
 
-  return user ? { ...user, role: user.role === "admin" ? "admin" : "user" } : null;
+  if (!user) return null;
+
+  // Trocou a senha? Quem ainda estiver com um token antigo perde o acesso.
+  // A comparação é em segundos cheios porque o `iat` do JWT não tem
+  // milissegundos: o token reemitido logo após a troca cai no mesmo segundo
+  // e sobrevive, enquanto os anteriores ficam para trás.
+  if (user.passwordChangedAt && emitidoEm !== null) {
+    const trocaEmSegundos = Math.floor(user.passwordChangedAt.getTime() / 1000);
+    if (trocaEmSegundos > emitidoEm) return null;
+  }
+
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    credits: user.credits,
+    role: user.role === "admin" ? "admin" : "user",
+  };
 }
 
 /** Igual ao usuarioAtual, mas explode em vez de devolver null. Para uso nas rotas. */

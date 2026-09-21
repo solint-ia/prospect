@@ -13,6 +13,8 @@ model User {
   name        String
   email       String       @unique
   password    String // Senha com hash bcrypt
+  // Marca a troca de senha: tokens emitidos antes disso deixam de valer.
+  passwordChangedAt DateTime?
   credits     Int          @default(1000) // Saldo de creditos inicial
   role        String       @default("user") // "user" | "admin"
   researches  Research[]
