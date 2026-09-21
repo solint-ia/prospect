@@ -3,12 +3,12 @@ import { NextResponse, type NextRequest } from "next/server";
 const COOKIE_SESSAO = "prospect_sessao";
 
 /**
- * Checagem otimista: o middleware roda no edge e não valida a assinatura do
- * JWT (jsonwebtoken precisa do runtime Node). Ele só evita que quem não tem
- * cookie veja as telas internas — a validação de verdade está em exigirUsuario(),
- * no servidor, em cada rota de API.
+ * Checagem otimista: só confere se o cookie de sessão existe, para quem não
+ * está logado não ver as telas internas. A assinatura do JWT não é validada
+ * aqui — o Proxy pode rodar fora do runtime da aplicação (até numa CDN), então
+ * a validação de verdade fica em exigirUsuario(), em cada rota de API.
  */
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const temCookie = Boolean(req.cookies.get(COOKIE_SESSAO)?.value);
   const { pathname } = req.nextUrl;
   const ehLogin = pathname === "/login";

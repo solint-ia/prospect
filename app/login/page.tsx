@@ -64,7 +64,7 @@ export default function LoginPage() {
       const data = await lerRespostaAuth(res);
       if (!res.ok) throw new Error(data.error ?? "Não foi possível entrar.");
 
-      // O cookie já veio na resposta; refresh para o middleware liberar a rota.
+      // O cookie já veio na resposta; refresh para o proxy liberar a rota.
       router.replace("/dashboard");
       router.refresh();
     } catch (err) {

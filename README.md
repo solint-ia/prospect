@@ -12,7 +12,7 @@ npx prisma generate
 npm run dev
 ```
 
-Acesse http://localhost:3000 — sem sessão, o middleware leva para `/login`.
+Acesse http://localhost:3000 — sem sessão, o proxy leva para `/login`.
 
 ## Variáveis de ambiente (`.env`)
 
@@ -54,7 +54,7 @@ npx prisma studio      # inspeciona os dados
 | `lib/filtros.ts` | Validação dos filtros de pesquisa |
 | `lib/leads.ts` | Achata o lead da Alievi para o formato da tabela `Lead` |
 | `lib/erros.ts` | Traduz erros HTTP/rede em mensagens legíveis |
-| `middleware.ts` | Redireciona quem não tem cookie de sessão para `/login` |
+| `proxy.ts` | Redireciona quem não tem cookie de sessão para `/login` |
 | `app/login/page.tsx` | Tela única de login e cadastro |
 | `app/dashboard/page.tsx` | Grid de cards das pesquisas do usuário |
 | `app/pesquisas/[id]/page.tsx` | Histórico de extrações, tabela de leads e export CSV |

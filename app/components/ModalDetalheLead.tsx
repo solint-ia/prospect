@@ -4,7 +4,6 @@ import { useEffect } from "react";
 import {
   Building2,
   Calendar,
-  CheckCircle2,
   Mail,
   MapPin,
   Phone,
@@ -18,6 +17,7 @@ import {
   telefonesDo,
   type LeadExportavel,
 } from "@/lib/csv";
+import { BadgeWhatsApp } from "./IconeWhatsApp";
 import { dataHora } from "./ui";
 
 function Dado({
@@ -213,12 +213,7 @@ export default function ModalDetalheLead({
                             <span className="truncate text-sm font-semibold text-emerald-400">
                               {p.numero_formatado}
                             </span>
-                            {p.whatsapp && (
-                              <CheckCircle2
-                                className="h-4 w-4 shrink-0 text-emerald-500"
-                                aria-label="WhatsApp"
-                              />
-                            )}
+                            {p.whatsapp && <BadgeWhatsApp />}
                           </span>
                           {(p.ddd || p.telefone) && (
                             <span className="mt-0.5 block text-xs text-slate-500">

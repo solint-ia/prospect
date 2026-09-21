@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, Download, Mail, Phone, Search, Table2 } from "lucide-react";
+import { Download, Mail, Phone, Search, Table2 } from "lucide-react";
 import {
   emailsDo,
   exportarCSV,
@@ -10,6 +10,7 @@ import {
   type FormatoCsv,
   type LeadExportavel,
 } from "@/lib/csv";
+import { BadgeWhatsApp } from "./IconeWhatsApp";
 import ModalDetalheLead from "./ModalDetalheLead";
 import ModalFormatoExportacao from "./ModalFormatoExportacao";
 import Paginacao from "./Paginacao";
@@ -21,7 +22,7 @@ const COLUNAS = [
   "Sócio / Contato",
   "Empresa",
   "CNPJ",
-  "Telefones",
+  "Telefones (WhatsApp)",
   "E-mails",
   "Endereço",
 ];
@@ -53,6 +54,57 @@ function Resumo({
           +{itens.length - limite} {itens.length - limite === 1 ? "outro" : "outros"}
         </span>
       )}
+    </div>
+  );
+}
+
+/**
+ * Na tabela só entram os números com WhatsApp — são os acionáveis.
+ * Os demais ficam na ficha do lead, que abre ao clicar na linha.
+ */
+const LIMITE_TELEFONES = 3;
+
+function TelefonesWhatsApp({ lead }: { lead: LeadLinha }) {
+  const todos = telefonesDo(lead);
+  const comWhats = todos.filter((t) => t.whatsapp);
+  const semWhats = todos.length - comWhats.length;
+
+  const restante = (n: number, rotulo: string) => (
+    <span className="text-[11px] text-slate-500">
+      +{n} {rotulo}
+    </span>
+  );
+
+  if (todos.length === 0) return <span className="text-slate-600">—</span>;
+
+  if (comWhats.length === 0) {
+    return (
+      <div className="flex flex-col gap-1">
+        <span className="text-slate-600">Nenhum com WhatsApp</span>
+        {semWhats > 0 &&
+          restante(semWhats, semWhats === 1 ? "número na ficha" : "números na ficha")}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      {comWhats.slice(0, LIMITE_TELEFONES).map((p, i) => (
+        <span key={i} className="flex items-center gap-1.5 whitespace-nowrap">
+          <Phone className="h-3 w-3 shrink-0 text-slate-600" />
+          {p.numero_formatado}
+          <BadgeWhatsApp compacto />
+          {p.classificacao && (
+            <span className="rounded bg-slate-800 px-1 text-[10px] font-bold text-amber-300">
+              {p.classificacao}
+            </span>
+          )}
+        </span>
+      ))}
+      {comWhats.length > LIMITE_TELEFONES &&
+        restante(comWhats.length - LIMITE_TELEFONES, "com WhatsApp")}
+      {semWhats > 0 &&
+        restante(semWhats, semWhats === 1 ? "sem WhatsApp" : "sem WhatsApp")}
     </div>
   );
 }
@@ -214,7 +266,6 @@ export default function TabelaLeads({
             </thead>
             <tbody>
               {leadsDaPagina.map((l) => {
-                const telefones = telefonesDo(l);
                 const emails = emailsDo(l);
 
                 return (
@@ -246,26 +297,7 @@ export default function TabelaLeads({
                       {formatarCnpj(l.cnpj) || <span className="text-slate-600">—</span>}
                     </td>
                     <td className="px-4 py-3 text-xs text-slate-300">
-                      <Resumo
-                        itens={telefones}
-                        icone={<Phone className="h-3 w-3" />}
-                        render={(p: (typeof telefones)[number]) => (
-                          <>
-                            {p.numero_formatado}
-                            {p.whatsapp && (
-                              <CheckCircle2
-                                className="h-3 w-3 text-emerald-500"
-                                aria-label="WhatsApp"
-                              />
-                            )}
-                            {p.classificacao && (
-                              <span className="rounded bg-slate-800 px-1 text-[10px] font-bold text-amber-300">
-                                {p.classificacao}
-                              </span>
-                            )}
-                          </>
-                        )}
-                      />
+                      <TelefonesWhatsApp lead={l} />
                     </td>
                     <td className="px-4 py-3 text-xs text-slate-300">
                       <Resumo
