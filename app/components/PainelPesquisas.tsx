@@ -19,13 +19,15 @@ import {
 import ModalNovaPesquisa from "./ModalNovaPesquisa";
 import ModalConfirmacao from "./ModalConfirmacao";
 import Paginacao from "./Paginacao";
-import { botaoPrimarioCls, dataCurta, num } from "./ui";
+import { botaoPrimarioCls, dataCurta, num, regiaoDaPesquisa } from "./ui";
 
 export interface PesquisaCard {
   id: string;
   name: string;
   cnae: string;
-  state: string;
+  state: string | null;
+  municipioNome: string | null;
+  cnaesSecundarios: string[];
   estimatedLeads: number | null;
   estimatedCompanies: number | null;
   podeExtrair: boolean;
@@ -64,9 +66,18 @@ function Card({
             <Tag className="h-3 w-3" />
             {formatarCnae(pesquisa.cnae)}
           </span>
+          {pesquisa.cnaesSecundarios.length > 0 && (
+            <span
+              className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-slate-400"
+              title={pesquisa.cnaesSecundarios.map(formatarCnae).join(", ")}
+            >
+              +{pesquisa.cnaesSecundarios.length} CNAE
+              {pesquisa.cnaesSecundarios.length > 1 ? "s" : ""}
+            </span>
+          )}
           <span className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-slate-300">
             <MapPin className="h-3 w-3" />
-            {pesquisa.state}
+            {regiaoDaPesquisa(pesquisa)}
           </span>
           {pesquisa.extracoes > 0 && (
             <span className="inline-flex items-center gap-1 rounded-md border border-emerald-400/20 bg-emerald-400/10 px-2 py-1 text-emerald-300">
@@ -154,7 +165,7 @@ export default function PainelPesquisas({
       const campos: Record<string, string> = {
         nome: pesquisa.name,
         cnae: `${pesquisa.cnae} ${formatarCnae(pesquisa.cnae)}`,
-        estado: pesquisa.state,
+        estado: regiaoDaPesquisa(pesquisa),
       };
       const valores = campoBusca === "todos" ? Object.values(campos) : [campos[campoBusca]];
 

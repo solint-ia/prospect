@@ -50,3 +50,11 @@ export function Campo({
     </label>
   );
 }
+
+/** O rótulo da região: município quando houver, senão a UF. */
+export function regiaoDaPesquisa(p: {
+  state: string | null;
+  municipioNome: string | null;
+}): string {
+  return p.municipioNome ?? p.state ?? "—";
+}

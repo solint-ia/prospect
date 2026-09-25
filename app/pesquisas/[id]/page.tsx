@@ -39,6 +39,8 @@ export default async function PaginaPesquisa({
     name: pesquisa.name,
     cnae: pesquisa.cnae,
     state: pesquisa.state,
+    municipioNome: pesquisa.municipioNome,
+    cnaesSecundarios: pesquisa.cnaesSecundarios,
     capitalMin: pesquisa.capitalMin,
     capitalMax: pesquisa.capitalMax,
     estimatedLeads: pesquisa.estimatedLeads,

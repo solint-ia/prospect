@@ -1,14 +1,13 @@
 import { NextResponse } from "next/server";
-import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ehAdmin, exigirUsuario } from "@/lib/auth";
 import { criarAlieviService } from "@/lib/alievi";
+import { reservarCreditos } from "@/lib/creditos";
 import {
-  estornarCreditos,
-  invalidarSaldoAlievi,
-  reservarCreditos,
-} from "@/lib/creditos";
-import { normalizarLead } from "@/lib/leads";
+  LIMITE_ESPERA_MS,
+  concluirExtracao,
+  falharExtracao,
+} from "@/lib/extracao";
 import { mensagemDeErro, statusDoErro } from "@/lib/erros";
 import { extracaoPublica } from "@/lib/publico";
 
@@ -17,11 +16,15 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 /**
- * Roda a extração na Alievi e persiste os leads.
+ * Dispara a extração e espera até LIMITE_ESPERA_MS.
+ *
+ * Se o serviço demorar mais que isso, a extração fica em "processing" com o ID
+ * remoto já gravado — o botão de sincronizar recupera os leads depois, sem
+ * gastar nada de novo. Os créditos seguem reservados nesse intervalo.
  *
  * Créditos (1 lead = 1 crédito):
  * - usuário: reserva o pedido antes, debita só o que chegou e estorna o resto;
- * - admin: não mexe no banco — quem desconta é a própria Alievi, do saldo dela.
+ * - admin: não mexe no banco — quem desconta é o próprio serviço.
  */
 export async function POST(
   req: Request,
@@ -49,7 +52,7 @@ export async function POST(
       );
     }
 
-    // Antes de tocar na Alievi: sem saldo, nem começa.
+    // Antes de tocar no serviço: sem saldo, nem começa.
     if (cobrar) await reservarCreditos(user.id, leadsRequested);
 
     const extracao = await prisma.extraction.create({
@@ -62,62 +65,70 @@ export async function POST(
       },
     });
 
+    const alievi = criarAlieviService();
+
+    let alieviExtractionId: string;
     try {
-      const { extractionId, leads } = await criarAlieviService().extrairDaPesquisa(
+      alieviExtractionId = await alievi.iniciarExtracao(
         pesquisa.alieviResearchId,
         leadsRequested
       );
+    } catch (erroInicio) {
+      // Nem começou no serviço: não há o que recuperar depois.
+      await falharExtracao(extracao, cobrar);
+      throw erroInicio;
+    }
 
-      // A Alievi pode entregar menos que o pedido (ex.: pediu 10, vieram 7).
-      const entregues = Math.min(leads.length, leadsRequested);
-      const cobrado = cobrar ? entregues : 0;
+    // Guardar o ID agora é o que torna a extração recuperável mais tarde.
+    await prisma.extraction.update({
+      where: { id: extracao.id },
+      data: { alieviExtractionId },
+    });
 
-      const [, finalizada] = await prisma.$transaction([
-        prisma.lead.createMany({
-          data: leads.map((l) => {
-            const { phonesJson, emailsJson, ...campos } = normalizarLead(l);
-            return {
-              extractionId: extracao.id,
-              ...campos,
-              // O Json do Prisma não aceita interfaces diretamente (sem index signature).
-              phonesJson: phonesJson as unknown as Prisma.InputJsonValue,
-              emailsJson: emailsJson as unknown as Prisma.InputJsonValue,
-            };
-          }),
-        }),
-        prisma.extraction.update({
-          where: { id: extracao.id },
-          data: {
-            status: "completed",
-            alieviExtractionId: extractionId,
-            creditsCharged: cobrado,
-          },
-          include: { _count: { select: { leads: true } } },
-        }),
-        ...(cobrar && leadsRequested > entregues
-          ? [
-              prisma.user.update({
-                where: { id: user.id },
-                data: { credits: { increment: leadsRequested - entregues } },
-              }),
-            ]
-          : []),
-      ]);
+    const status = await alievi.aguardarConclusao(
+      alieviExtractionId,
+      LIMITE_ESPERA_MS
+    );
 
-      invalidarSaldoAlievi();
+    if (status === "completed") {
+      const { cobrado } = await concluirExtracao({
+        extracao,
+        alieviExtractionId,
+        alievi,
+        cobrar,
+      });
+
+      const finalizada = await prisma.extraction.findUniqueOrThrow({
+        where: { id: extracao.id },
+        include: { _count: { select: { leads: true } } },
+      });
+
       return NextResponse.json({
         extracao: extracaoPublica(finalizada),
         creditosDebitados: cobrado,
       });
-    } catch (erroExtracao) {
-      // Falhou: nada foi entregue, então nada é cobrado.
-      await prisma.extraction.update({
-        where: { id: extracao.id },
-        data: { status: "failed", creditsCharged: 0 },
-      });
-      if (cobrar) await estornarCreditos(user.id, leadsRequested);
-      throw erroExtracao;
     }
+
+    if (status === "failed" || status === "error") {
+      await falharExtracao(extracao, cobrar);
+      throw new Error("A extração falhou no serviço de dados.");
+    }
+
+    // Ainda rodando: devolve o controle e deixa para o sincronizar.
+    const pendente = await prisma.extraction.findUniqueOrThrow({
+      where: { id: extracao.id },
+      include: { _count: { select: { leads: true } } },
+    });
+
+    return NextResponse.json(
+      {
+        extracao: extracaoPublica(pendente),
+        emAndamento: true,
+        aviso:
+          "A extração está demorando mais que o normal e continua rodando. Use o botão de atualizar na lista de extrações para buscar os leads quando terminar.",
+      },
+      { status: 202 }
+    );
   } catch (error) {
     return NextResponse.json(
       { error: mensagemDeErro(error) },

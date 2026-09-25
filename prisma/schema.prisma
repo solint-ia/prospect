@@ -27,8 +27,11 @@ model Research {
   userId           String
   user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   name             String // Ex: "Farmacias Aracaju"
-  cnae             String // Ex: "4771701"
-  state            String // Ex: "SE"
+  cnae             String // CNAE primario, ex: "4771701"
+  cnaesSecundarios String[] @default([]) // Ate 5, opcionais
+  state            String? // UF quando o filtro e por estado, ex: "SE"
+  municipioCodigo  Int? // codmunicio quando o filtro e por municipio
+  municipioNome    String?
   capitalMin       Float?
   capitalMax       Float?
   estimatedLeads   Int? // Retorno da estimativa (ex: 1461)

@@ -29,6 +29,7 @@ export function mensagemDeErro(error: unknown): string {
 /** Rotas autenticadas: sem sessão vira 401, sem permissão 403, saldo 402. */
 export function statusDoErro(error: unknown): number {
   if (!(error instanceof Error)) return 500;
+  if (error.name === "ErroDeValidacao") return 400;
   if (error.name === "NaoAutenticado") return 401;
   if (error.name === "SemPermissao") return 403;
   if (error.name === "SaldoInsuficiente") return 402;

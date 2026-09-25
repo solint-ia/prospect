@@ -22,13 +22,32 @@ export interface CnaeItem {
   descricao: string;
 }
 
-/** Filtros da etapa 1: definem o universo de empresas, sem quantidade ainda. */
+export interface CidadeItem {
+  id: number;
+  nome: string;
+}
+
+/**
+ * Filtros da etapa 1: definem o universo de empresas, sem quantidade ainda.
+ * A região é por UF **ou** por município, nunca os dois: mandar uma UF que não
+ * corresponde ao município zera o resultado do lado do fornecedor.
+ */
 export interface FiltroParams {
   nome: string;
   cnae: string;
-  estado: string;
+  cnaesSecundarios: string[];
+  estado: string | null;
+  municipioCodigo: number | null;
+  municipioNome: string | null;
   capitalMin: number;
   capitalMax: number;
+}
+
+export interface ExtracaoRemota {
+  id: string;
+  status: string;
+  leadsCount: number;
+  createdAt: string;
 }
 
 export interface Estimativa {
@@ -38,8 +57,8 @@ export interface Estimativa {
 
 const BASE_URL = "https://app.alieviprospect.com/api";
 const ESTIMATIVA_URL = "https://backsec.alievichat.com/webhook/estimativa";
+const TIMEOUT_ESTIMATIVA_MS = 150000;
 const POLL_INTERVAL_MS = 2500;
-const POLL_MAX_TENTATIVAS = 60;
 
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
@@ -108,6 +127,24 @@ export class AlieviService {
   }
 
   /**
+   * Municípios do fornecedor, filtrados por nome. O `id` é o código usado como
+   * `codmunicio`. O campo `uf` da resposta é ignorado: vem errado (Aracaju
+   * aparece como MG, São Paulo como GO), então não dá para confiar nele.
+   */
+  async buscarCidades(busca: string): Promise<CidadeItem[]> {
+    await this.ensureAuth();
+
+    const { data } = await this.client.get("/cities", {
+      params: busca ? { search: busca } : undefined,
+    });
+    if (!Array.isArray(data)) return [];
+
+    return data
+      .filter((c) => c?.id && c?.name)
+      .map((c) => ({ id: Number(c.id), nome: String(c.name) }));
+  }
+
+  /**
    * Quantas empresas e sócios existem para os filtros, antes de gastar crédito.
    * Vive em outro host (webhook n8n) e não usa o token da plataforma.
    */
@@ -117,16 +154,18 @@ export class AlieviService {
       {
         user: 1,
         cnae_primario: [params.cnae],
-        cnae_secundario: [],
+        cnae_secundario: params.cnaesSecundarios,
         capitalsocial: {
           inicial: params.capitalMin,
           final: params.capitalMax,
         },
-        codmunicio: null,
-        coduf: params.estado,
+        codmunicio: params.municipioCodigo,
+        // Com município escolhido a UF vai nula, senão o filtro se anula.
+        coduf: params.municipioCodigo ? null : params.estado,
       },
       {
-        timeout: 60000,
+        // Com CNAEs secundarios a estimativa passa de 30s; 60s estourava.
+        timeout: TIMEOUT_ESTIMATIVA_MS,
         headers: { "User-Agent": USER_AGENT, "Content-Type": "application/json" },
       }
     );
@@ -145,11 +184,19 @@ export class AlieviService {
   ): Promise<string> {
     await this.ensureAuth();
 
+    const porMunicipio = Boolean(params.municipioCodigo);
+
     const { data } = await this.client.post("/researches", {
       name: params.nome,
-      cnaes: [params.cnae],
+      cnaes: [params.cnae, ...params.cnaesSecundarios],
       cnaePrimario: params.cnae,
-      state: params.estado,
+      cnaeSecundario: params.cnaesSecundarios,
+      cnaeLogic: "or",
+      state: porMunicipio ? null : params.estado,
+      municipality: params.municipioNome,
+      municipalityCode: params.municipioCodigo,
+      municipalities: porMunicipio ? [params.municipioNome] : null,
+      municipalityCodes: porMunicipio ? [params.municipioCodigo] : null,
       capitalRange: `${params.capitalMin}-${params.capitalMax}`,
       estimatedLeads,
     });
@@ -162,49 +209,82 @@ export class AlieviService {
    * Etapa 2: dispara a extração numa pesquisa já criada, aguarda o
    * processamento e devolve os leads.
    */
-  async extrairDaPesquisa(
+  /** Dispara a extração e devolve o ID no serviço, sem esperar terminar. */
+  async iniciarExtracao(
     researchId: string,
     leadsCount: number
-  ): Promise<{ extractionId: string; leads: LeadItem[] }> {
+  ): Promise<string> {
     await this.ensureAuth();
 
-    const { data: extracao } = await this.client.post(
+    const { data } = await this.client.post(
       `/researches/${researchId}/extractions`,
       { leadsCount: Number(leadsCount) }
     );
-    const extractionId = extracao?.id;
-    if (!extractionId) throw new Error("O serviço de dados não retornou o ID da extração.");
 
-    let concluido = false;
-    let tentativas = 0;
+    if (!data?.id) {
+      throw new Error("O serviço de dados não retornou o ID da extração.");
+    }
+    return String(data.id);
+  }
 
-    while (!concluido && tentativas < POLL_MAX_TENTATIVAS) {
+  /** "processing" | "completed" | "failed" | ... */
+  async statusExtracao(extractionId: string): Promise<string> {
+    await this.ensureAuth();
+
+    const { data } = await this.client.get(`/extractions/${extractionId}`);
+    return String(data?.status ?? "").toLowerCase();
+  }
+
+  /**
+   * Espera a extração terminar, até o limite de tempo.
+   * Devolve o status alcançado: quem chama decide o que fazer com
+   * "processing", que significa apenas "ainda não terminou".
+   */
+  async aguardarConclusao(
+    extractionId: string,
+    limiteMs: number
+  ): Promise<string> {
+    const prazo = Date.now() + limiteMs;
+
+    while (Date.now() < prazo) {
       await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
 
-      const { data: statusResp } = await this.client.get(
-        `/extractions/${extractionId}`
-      );
-      const status = String(statusResp?.status ?? "").toLowerCase();
-
-      if (status === "completed") {
-        concluido = true;
-      } else if (status === "failed" || status === "error") {
-        throw new Error("A extração falhou no serviço de dados.");
-      }
-
-      tentativas++;
+      const status = await this.statusExtracao(extractionId);
+      if (status !== "processing" && status !== "") return status;
     }
 
-    if (!concluido) throw new Error("A extração demorou muito para responder.");
+    return "processing";
+  }
 
-    const { data: leads } = await this.client.get(
+  async baixarLeads(extractionId: string): Promise<LeadItem[]> {
+    await this.ensureAuth();
+
+    const { data } = await this.client.get(
       `/extractions/${extractionId}/leads`
     );
+    return Array.isArray(data) ? data : (data?.leads ?? []);
+  }
 
-    return {
-      extractionId,
-      leads: Array.isArray(leads) ? leads : (leads?.leads ?? []),
-    };
+  /**
+   * Extrações de uma pesquisa no serviço. Serve para reencontrar uma extração
+   * cujo ID não chegou a ser guardado do nosso lado.
+   */
+  async listarExtracoes(researchId: string): Promise<ExtracaoRemota[]> {
+    await this.ensureAuth();
+
+    const { data } = await this.client.get(
+      `/researches/${researchId}/extractions`
+    );
+    if (!Array.isArray(data)) return [];
+
+    return data
+      .filter((e) => e?.id)
+      .map((e) => ({
+        id: String(e.id),
+        status: String(e.status ?? "").toLowerCase(),
+        leadsCount: Number(e.leadsCount ?? 0),
+        createdAt: String(e.createdAt ?? ""),
+      }));
   }
 }
 

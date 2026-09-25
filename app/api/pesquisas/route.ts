@@ -8,6 +8,8 @@ import { lerFiltros } from "@/lib/filtros";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// A estimativa com CNAEs secundarios pode levar mais de 30s.
+export const maxDuration = 300;
 
 /** Cards do dashboard: as pesquisas do usuário, da mais recente para a mais antiga. */
 export async function GET() {
@@ -60,7 +62,10 @@ export async function POST(req: Request) {
         userId: user.id,
         name: filtros.nome,
         cnae: filtros.cnae,
+        cnaesSecundarios: filtros.cnaesSecundarios,
         state: filtros.estado,
+        municipioCodigo: filtros.municipioCodigo,
+        municipioNome: filtros.municipioNome,
         capitalMin: filtros.capitalMin,
         capitalMax: filtros.capitalMax,
         estimatedLeads: estimativa.totalLeads,

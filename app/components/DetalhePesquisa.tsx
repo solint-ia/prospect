@@ -13,6 +13,7 @@ import {
   Loader2,
   MapPin,
   Plus,
+  RefreshCw,
   Tag,
   Trash2,
   Users,
@@ -21,7 +22,14 @@ import {
 import TabelaLeads, { type LeadLinha } from "./TabelaLeads";
 import ModalConfirmacao from "./ModalConfirmacao";
 import Paginacao from "./Paginacao";
-import { Campo, botaoPrimarioCls, dataHora, inputCls, num } from "./ui";
+import {
+  Campo,
+  botaoPrimarioCls,
+  dataHora,
+  inputCls,
+  num,
+  regiaoDaPesquisa,
+} from "./ui";
 
 export interface ExtracaoItem {
   id: string;
@@ -35,7 +43,9 @@ export interface PesquisaDetalhe {
   id: string;
   name: string;
   cnae: string;
-  state: string;
+  state: string | null;
+  municipioNome: string | null;
+  cnaesSecundarios: string[];
   capitalMin: number | null;
   capitalMax: number | null;
   estimatedLeads: number | null;
@@ -308,6 +318,8 @@ export default function DetalhePesquisa({
   const router = useRouter();
 
   const [modalAberto, setModalAberto] = useState(false);
+  const [sincronizando, setSincronizando] = useState<string | null>(null);
+  const [avisoSinc, setAvisoSinc] = useState<string | null>(null);
   const [extracaoAberta, setExtracaoAberta] = useState<string | null>(
     pesquisa.extracoes.find((e) => e.status === "completed")?.id ?? null
   );
@@ -394,7 +406,34 @@ export default function DetalhePesquisa({
 
     setModalAberto(false);
     setExtracaoAberta(data.extracao.id);
+    // 202: ainda rodando no serviço; os leads vêm pelo botão de atualizar.
+    if (data.emAndamento) setAvisoSinc(data.aviso ?? null);
     router.refresh();
+  }
+
+  /** Busca no serviço o desfecho de uma extração que não terminou a tempo. */
+  async function sincronizar(extracaoId: string) {
+    setSincronizando(extracaoId);
+    setAvisoSinc(null);
+    try {
+      const res = await fetch(`/api/extracoes/${extracaoId}/sincronizar`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Não foi possível sincronizar.");
+
+      if (data.status === "completed") {
+        setAvisoSinc(`${num(data.entregues)} leads recuperados.`);
+        setExtracaoAberta(extracaoId);
+      } else {
+        setAvisoSinc(data.aviso ?? "Extração ainda em processamento.");
+      }
+      router.refresh();
+    } catch (e) {
+      setAvisoSinc(e instanceof Error ? e.message : "Não foi possível sincronizar.");
+    } finally {
+      setSincronizando(null);
+    }
   }
 
   async function excluirExtracao() {
@@ -449,9 +488,18 @@ export default function DetalhePesquisa({
               <Tag className="h-3 w-3" />
               {formatarCnae(pesquisa.cnae)}
             </span>
+            {pesquisa.cnaesSecundarios.map((c) => (
+              <span
+                key={c}
+                className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2 py-1 font-mono text-slate-400"
+                title="CNAE secundário"
+              >
+                {formatarCnae(c)}
+              </span>
+            ))}
             <span className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-slate-300">
               <MapPin className="h-3 w-3" />
-              {pesquisa.state}
+              {regiaoDaPesquisa(pesquisa)}
             </span>
             <span className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-slate-300">
               <Building2 className="h-3 w-3" />
@@ -508,6 +556,23 @@ export default function DetalhePesquisa({
           )}
         </div>
 
+        {avisoSinc && (
+          <p className="mb-3 flex items-start justify-between gap-3 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-2.5 text-sm text-emerald-200">
+            <span className="flex items-start gap-2">
+              <RefreshCw className="mt-0.5 h-4 w-4 shrink-0" />
+              {avisoSinc}
+            </span>
+            <button
+              type="button"
+              onClick={() => setAvisoSinc(null)}
+              title="Fechar"
+              className="shrink-0 text-emerald-300/70 hover:text-emerald-200"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </p>
+        )}
+
         {extracoes.length === 0 ? (
           <p className="rounded-xl border border-dashed border-white/15 px-4 py-10 text-center text-sm text-slate-500">
             Nenhuma extração ainda. Clique em &ldquo;Nova Extração&rdquo; para
@@ -545,6 +610,23 @@ export default function DetalhePesquisa({
                         {dataHora(extracao.createdAt)}
                       </p>
                     </button>
+
+                    {extracao.status !== "completed" && (
+                      <button
+                        type="button"
+                        onClick={() => sincronizar(extracao.id)}
+                        disabled={sincronizando === extracao.id}
+                        title="Buscar no serviço os leads desta extração"
+                        aria-label="Sincronizar extração"
+                        className="absolute right-11 top-1/2 -translate-y-1/2 rounded-lg p-2 text-slate-500 transition hover:bg-emerald-400/10 hover:text-emerald-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/60 disabled:opacity-40"
+                      >
+                        <RefreshCw
+                          className={`h-4 w-4 ${
+                            sincronizando === extracao.id ? "animate-spin" : ""
+                          }`}
+                        />
+                      </button>
+                    )}
 
                     <button
                       type="button"
@@ -596,7 +678,7 @@ export default function DetalhePesquisa({
           ) : (
             <TabelaLeads
               leads={leads}
-              nomeArquivo={`leads_${pesquisa.state}_${pesquisa.cnae}`}
+              nomeArquivo={`leads_${regiaoDaPesquisa(pesquisa).replace(/\s+/g, "-")}_${pesquisa.cnae}`}
             />
           )}
         </section>

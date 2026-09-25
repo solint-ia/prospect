@@ -3,7 +3,14 @@
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useState } from "react";
-import { Coins, LayoutGrid, LogOut, ShieldCheck, User } from "lucide-react";
+import {
+  Coins,
+  History,
+  LayoutGrid,
+  LogOut,
+  ShieldCheck,
+  User,
+} from "lucide-react";
 import { num } from "./ui";
 
 export interface Usuario {
@@ -53,18 +60,25 @@ export default function Cabecalho({
           </p>
         </Link>
 
-        {admin && (
-          <nav className="flex items-center gap-1">
-            <Link href="/dashboard" className={linkCls(pathname !== "/admin")}>
-              <LayoutGrid className="h-4 w-4" />
-              Pesquisas
-            </Link>
+        <nav className="flex items-center gap-1">
+          <Link
+            href="/dashboard"
+            className={linkCls(pathname !== "/admin" && pathname !== "/creditos")}
+          >
+            <LayoutGrid className="h-4 w-4" />
+            Pesquisas
+          </Link>
+          <Link href="/creditos" className={linkCls(pathname === "/creditos")}>
+            <History className="h-4 w-4" />
+            Créditos
+          </Link>
+          {admin && (
             <Link href="/admin" className={linkCls(pathname === "/admin")}>
               <ShieldCheck className="h-4 w-4" />
               Admin
             </Link>
-          </nav>
-        )}
+          )}
+        </nav>
 
         <div
           className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3.5 py-2"

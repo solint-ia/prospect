@@ -26,6 +26,8 @@ export default async function Dashboard() {
     name: p.name,
     cnae: p.cnae,
     state: p.state,
+    municipioNome: p.municipioNome,
+    cnaesSecundarios: p.cnaesSecundarios,
     estimatedLeads: p.estimatedLeads,
     estimatedCompanies: p.estimatedCompanies,
     podeExtrair: Boolean(p.alieviResearchId),

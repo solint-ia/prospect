@@ -12,7 +12,16 @@ import {
   X,
 } from "lucide-react";
 import CnaeCombobox from "./CnaeCombobox";
+import CidadeCombobox, { type CidadeItem } from "./CidadeCombobox";
 import { Campo, botaoPrimarioCls, inputCls, num, UFS } from "./ui";
+
+const MAX_SECUNDARIOS = 5;
+
+function formatarCnae(cod: string): string {
+  return cod.length === 7
+    ? `${cod.slice(0, 4)}-${cod.slice(4, 5)}/${cod.slice(5)}`
+    : cod;
+}
 
 export interface PesquisaCriada {
   id: string;
@@ -54,9 +63,13 @@ export default function ModalNovaPesquisa({
 
   const [nome, setNome] = useState("");
   const [cnae, setCnae] = useState("");
+  const [cnaesSecundarios, setCnaesSecundarios] = useState<string[]>([]);
+  const [porMunicipio, setPorMunicipio] = useState(false);
   const [estado, setEstado] = useState("SE");
-  const [capitalMin, setCapitalMin] = useState(10000);
-  const [capitalMax, setCapitalMax] = useState(500000);
+  const [cidade, setCidade] = useState<CidadeItem | null>(null);
+  // Iguais aos da plataforma original: campos zerados por padrao.
+  const [capitalMin, setCapitalMin] = useState(0);
+  const [capitalMax, setCapitalMax] = useState(0);
 
   const [buscando, setBuscando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -81,6 +94,11 @@ export default function ModalNovaPesquisa({
       return;
     }
 
+    if (porMunicipio && !cidade) {
+      setErro("Selecione um município ou volte a filtrar por estado.");
+      return;
+    }
+
     setBuscando(true);
     setErro(null);
 
@@ -88,7 +106,16 @@ export default function ModalNovaPesquisa({
       const res = await fetch("/api/pesquisas", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nome, cnae, estado, capitalMin, capitalMax }),
+        body: JSON.stringify({
+          nome,
+          cnae,
+          cnaesSecundarios,
+          estado: porMunicipio ? "" : estado,
+          municipioCodigo: porMunicipio ? cidade?.id : null,
+          municipioNome: porMunicipio ? cidade?.nome : null,
+          capitalMin,
+          capitalMax,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? `A busca falhou (HTTP ${res.status}).`);
@@ -218,19 +245,104 @@ export default function ModalNovaPesquisa({
                 <CnaeCombobox value={cnae} onChange={setCnae} />
               </Campo>
 
-              <Campo label="Estado (UF)" className="sm:col-span-2">
-                <select
-                  value={estado}
-                  onChange={(e) => setEstado(e.target.value)}
-                  className={inputCls}
-                >
-                  {UFS.map((uf) => (
-                    <option key={uf} value={uf} className="bg-slate-900">
-                      {uf}
-                    </option>
-                  ))}
-                </select>
+              <Campo
+                label={`CNAEs secundários (até ${MAX_SECUNDARIOS})`}
+                dica="Opcional. Traz empresas que tenham o primário ou qualquer um destes."
+                className="sm:col-span-2"
+              >
+                {cnaesSecundarios.length > 0 && (
+                  <div className="mb-2 flex flex-wrap gap-1.5">
+                    {cnaesSecundarios.map((c) => (
+                      <span
+                        key={c}
+                        className="inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-2 py-1 font-mono text-xs text-emerald-300"
+                      >
+                        {formatarCnae(c)}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setCnaesSecundarios((atual) =>
+                              atual.filter((x) => x !== c)
+                            )
+                          }
+                          title="Remover"
+                          className="rounded text-slate-500 transition hover:text-white"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {cnaesSecundarios.length < MAX_SECUNDARIOS ? (
+                  <CnaeCombobox
+                    value=""
+                    onChange={(cod) =>
+                      setCnaesSecundarios((atual) =>
+                        atual.includes(cod) ? atual : [...atual, cod]
+                      )
+                    }
+                    placeholder="Buscar CNAE secundário..."
+                    ocultar={[cnae, ...cnaesSecundarios]}
+                  />
+                ) : (
+                  <p className="rounded-lg border border-white/10 bg-white/5 px-3.5 py-2.5 text-xs text-slate-500">
+                    Limite de {MAX_SECUNDARIOS} CNAEs secundários atingido.
+                  </p>
+                )}
               </Campo>
+
+              <div className="sm:col-span-2">
+                <div
+                  role="radiogroup"
+                  aria-label="Filtrar região por"
+                  className="mb-3 inline-flex rounded-xl border border-white/10 bg-white/5 p-1"
+                >
+                  {[
+                    { valor: false, rotulo: "Estado" },
+                    { valor: true, rotulo: "Município" },
+                  ].map((opcao) => (
+                    <button
+                      key={opcao.rotulo}
+                      type="button"
+                      role="radio"
+                      aria-checked={porMunicipio === opcao.valor}
+                      onClick={() => setPorMunicipio(opcao.valor)}
+                      className={`rounded-lg px-4 py-1.5 text-sm font-medium transition ${
+                        porMunicipio === opcao.valor
+                          ? "bg-emerald-500 text-slate-950"
+                          : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      {opcao.rotulo}
+                    </button>
+                  ))}
+                </div>
+
+                {porMunicipio ? (
+                  <Campo
+                    label="Município"
+                    dica="Busque pelo nome. O estado não é aplicado junto com o município."
+                  >
+                    <CidadeCombobox cidade={cidade} onChange={setCidade} />
+                  </Campo>
+                ) : (
+                  <Campo label="Estado (UF)">
+                    <select
+                      value={estado}
+                      onChange={(e) => setEstado(e.target.value)}
+                      className={inputCls}
+                    >
+                      {UFS.map((uf) => (
+                        <option key={uf} value={uf} className="bg-slate-900">
+                          {uf}
+                        </option>
+                      ))}
+                    </select>
+                  </Campo>
+                )}
+              </div>
 
               <Campo label="Capital social mínimo (R$)">
                 <input
@@ -251,6 +363,15 @@ export default function ModalNovaPesquisa({
                   className={inputCls}
                 />
               </Campo>
+
+              {capitalMin === 0 && capitalMax === 0 && (
+                <p className="-mt-1 flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-200 sm:col-span-2">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  Com 0 e 0 a busca traz só empresas de capital social zero, que
+                  são poucas. Para não filtrar por capital, use uma faixa ampla
+                  (ex.: 0 e 999999999).
+                </p>
+              )}
             </div>
 
             {erro && (

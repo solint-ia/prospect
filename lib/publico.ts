@@ -14,3 +14,11 @@ export function extracaoPublica<T extends Extraction>(e: T) {
   void alieviExtractionId;
   return resto;
 }
+
+/** Rótulo da região de uma pesquisa: município quando houver, senão a UF. */
+export function regiaoDeFiltro(p: {
+  state: string | null;
+  municipioNome: string | null;
+}): string {
+  return p.municipioNome ?? p.state ?? "—";
+}

@@ -98,9 +98,15 @@ function Realce({ texto, termo }: { texto: string; termo: string }) {
 export default function CnaeCombobox({
   value,
   onChange,
+  placeholder,
+  ocultar = [],
 }: {
   value: string;
   onChange: (cod: string) => void;
+  /** Texto do campo de busca; o padrão serve ao CNAE primário. */
+  placeholder?: string;
+  /** Códigos que não devem aparecer (já escolhidos em outro campo). */
+  ocultar?: string[];
 }) {
   const [cnaes, setCnaes] = useState<CnaeItem[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -142,7 +148,14 @@ export default function CnaeCombobox({
     return () => document.removeEventListener("mousedown", aoClicarFora);
   }, []);
 
-  const resultados = useMemo(() => buscar(cnaes, termo), [cnaes, termo]);
+  const disponiveis = useMemo(
+    () => (ocultar.length ? cnaes.filter((c) => !ocultar.includes(c.cod)) : cnaes),
+    [cnaes, ocultar]
+  );
+  const resultados = useMemo(
+    () => buscar(disponiveis, termo),
+    [disponiveis, termo]
+  );
   const selecionado = useMemo(
     () => cnaes.find((c) => c.cod === value) ?? null,
     [cnaes, value]
@@ -249,7 +262,7 @@ export default function CnaeCombobox({
               placeholder={
                 carregando
                   ? "Carregando CNAEs..."
-                  : "Digite 4771 ou farmácia..."
+                  : (placeholder ?? "Digite 4771 ou farmácia...")
               }
               className="w-full rounded-lg border border-white/10 bg-white/5 py-2.5 pl-9 pr-9 text-sm text-white placeholder:text-slate-500 transition focus:border-emerald-400/50 focus:bg-white/10 focus:outline-none focus:ring-1 focus:ring-emerald-400/40 disabled:opacity-60"
             />
